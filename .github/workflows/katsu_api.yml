@@ -31,7 +31,7 @@ jobs:
           fi
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-      - name: Notify Slack on failure
+      - name: Notify Slack on Failure
         if: failure()
         run: |
           curl -X POST -H 'Content-type: application/json' \
@@ -47,7 +47,7 @@ jobs:
             ]
           }" ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      - name: Notify Slack on success
+      - name: Notify Slack on Success
         if: success()
         run: |
           curl -X POST -H 'Content-type: application/json' \
