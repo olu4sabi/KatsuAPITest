@@ -1,0 +1,61 @@
+name: Katsu Wallet automated API tests using Postman CLI
+
+on: 
+  push:
+  schedule:
+    - cron: '0 7 * * *'  # Runs automatically daily at 7:00 AM UTC (8:00 AM WAT)
+
+jobs:
+  katsu-api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Postman CLI
+        run: |
+          curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+      - name: Login to Postman CLI
+        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }} 
+      - name: Run Katsu Wallet API tests
+        run: |
+          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" > postman_output.txt || true
+      - name: Extract Postman run URL
+        id: extract_url
+        run: |
+          SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
+          if [ -z "$SUMMARY_URL" ]; then
+            SUMMARY_URL="Postman run summary URL not found"
+          fi
+          echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "🚨 * Katsu Wallet API Tests Failed!*\n<'"$SUMMARY_URL"'|View Test Summary on Postman>"
+                }
+              }
+            ]
+          }'${{ secrets.SLACK_WEBHOOK_URL
+      - name: Notify Slack on success
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "✅ *Katsu Wallet API Tests Passed!*\n<'"$SUMMARY_URL"'|View Test Summary on Postman>"
+                }
+              }
+            ]
+          }'${{ secrets.SLACK_WEBHOOK_URL }}      
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SUMMARY_URL: ${{ env.SUMMARY_URL }}
