@@ -18,8 +18,7 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" \
-            -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
+          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
             > postman_output.txt || true
 
       - name: Extract Postman run URL
