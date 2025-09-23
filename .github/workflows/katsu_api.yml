@@ -20,59 +20,73 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" \
+          postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" \
             -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
             --reporters cli > postman_output.txt || true
 
-      - name: Extract summary, status, and URL
-        id: extract
+      - name: Parse results into Markdown
+        id: parse
         run: |
-          # Extract summary table
-          SUMMARY=$(sed -n '/┌/,/┘/p' postman_output.txt)
+          # Strip ANSI colors
+          sed 's/\x1b\[[0-9;]*m//g' postman_output.txt > clean_output.txt
 
-          # Extract run duration & response time
-          DURATION=$(grep "total run duration" postman_output.txt | sed 's/│//g;s/total run duration://g;s/^ *//;s/ *$//')
-          RESP_TIME=$(grep "average response time" postman_output.txt | sed 's/│//g;s/average response time://g;s/^ *//;s/ *$//')
+          # Extract numbers for each metric
+          ITER=$(grep "iterations" clean_output.txt | awk '{print $(NF-1)}')
+          ITER_FAIL=$(grep "iterations" clean_output.txt | awk '{print $NF}')
+          REQ=$(grep "requests" clean_output.txt | awk '{print $(NF-1)}')
+          REQ_FAIL=$(grep "requests" clean_output.txt | awk '{print $NF}')
+          TS=$(grep "test-scripts" clean_output.txt | awk '{print $(NF-1)}')
+          TS_FAIL=$(grep "test-scripts" clean_output.txt | awk '{print $NF}')
+          PRE=$(grep "prerequest-scripts" clean_output.txt | awk '{print $(NF-1)}')
+          PRE_FAIL=$(grep "prerequest-scripts" clean_output.txt | awk '{print $NF}')
+          ASSERT=$(grep "assertions" clean_output.txt | awk '{print $(NF-1)}')
+          ASSERT_FAIL=$(grep "assertions" clean_output.txt | awk '{print $NF}')
 
-          # Count failures
-          FAIL_COUNT=$(echo "$SUMMARY" | awk -F'│' '{gsub(/ /,""); if($3 ~ /^[0-9]+$/) sum+=$3} END{print sum}')
+          # Duration & response time
+          DURATION=$(grep "total run duration" clean_output.txt | sed 's/.*duration: //')
+          RESP_TIME=$(grep "average response time" clean_output.txt | sed 's/.*time: //')
 
-          STATUS="✅ *PASSED*"
-          if [ "$FAIL_COUNT" -gt 0 ]; then
-            STATUS="🚨 *FAILED*"
-          fi
+          # Build markdown table
+          echo "| Metric             | Executed | Failed |" > summary.md
+          echo "|--------------------|----------|--------|" >> summary.md
+          echo "| Iterations         | $ITER     | $ITER_FAIL |" >> summary.md
+          echo "| Requests           | $REQ     | $REQ_FAIL |" >> summary.md
+          echo "| Test Scripts       | $TS     | $TS_FAIL |" >> summary.md
+          echo "| Pre-req Scripts    | $PRE     | $PRE_FAIL |" >> summary.md
+          echo "| Assertions         | $ASSERT     | $ASSERT_FAIL |" >> summary.md
+          echo "" >> summary.md
+          echo "*Duration:* $DURATION" >> summary.md
+          echo "*Avg Response Time:* $RESP_TIME" >> summary.md
 
-          # Extract Postman run summary URL
-          SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
-          if [ -z "$SUMMARY_URL" ]; then
-            SUMMARY_URL="Postman run summary URL not found"
+          # Decide pass/fail
+          TOTAL_FAIL=$((ITER_FAIL + REQ_FAIL + TS_FAIL + PRE_FAIL + ASSERT_FAIL))
+          STATUS="✅ PASSED"
+          if [ "$TOTAL_FAIL" -gt 0 ]; then
+            STATUS="🚨 FAILED"
           fi
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "summary_url=$SUMMARY_URL" >> $GITHUB_OUTPUT
-          echo "$SUMMARY" > summary.txt
-          echo "$DURATION" > duration.txt
-          echo "$RESP_TIME" > response.txt
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          cat summary.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Notify Slack
         run: |
-          STATUS="${{ steps.extract.outputs.status }}"
-          SUMMARY=$(cat summary.txt)
-          DURATION=$(cat duration.txt)
-          RESP_TIME=$(cat response.txt)
-          SUMMARY_URL="${{ steps.extract.outputs.summary_url }}"
+          STATUS="${{ steps.parse.outputs.status }}"
+          SUMMARY="${{ steps.parse.outputs.summary }}"
 
-          # Escape summary safely
+          # Escape Markdown text safely
           SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs .)
 
           curl -X POST -H 'Content-type: application/json' \
           --data "{
+            \"text\": \"Katsu Wallet API Test Results\",
             \"blocks\": [
               {
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \":bell: *Katsu Wallet API Test Results*\\n${STATUS}\\n\`\`\`$(echo $SUMMARY_ESCAPED | sed 's/^\"//;s/\"$//')\`\`\`\\n*Duration:* ${DURATION}\\n*Avg Response Time:* ${RESP_TIME}\\n<${SUMMARY_URL}|View Test Summary>\"
+                  \"text\": \":bell: *Katsu Wallet API Test Results*\\n${STATUS}\\n\`\`\`$(echo $SUMMARY_ESCAPED | sed 's/^\"//;s/\"$//')\`\`\`\"
                 }
               }
             ]
