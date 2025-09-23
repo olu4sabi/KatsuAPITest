@@ -1,9 +1,7 @@
-name: Katsu API Tests
-
-on: 
-  push:
+on:
+  push: {}
   schedule:
-    - cron: '0 7 * * *' # Daily 7:00 UTC (8:00 WAT)
+    - cron: '0 7 * * *'  # Runs daily at 7:00 AM UTC (8:00 AM WAT)
 
 jobs:
   katsu-api-tests:
@@ -22,71 +20,36 @@ jobs:
         run: |
           postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" \
             -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
-            --reporters cli > postman_output.txt || true
+            > postman_output.txt || true
 
-      - name: Parse results into Markdown
-        id: parse
+      - name: Extract Postman run URL
+        id: extract_url
         run: |
-          # Strip ANSI colors
-          sed 's/\x1b\[[0-9;]*m//g' postman_output.txt > clean_output.txt
-
-          # Extract numbers for each metric
-          ITER=$(grep "iterations" clean_output.txt | awk '{print $(NF-1)}')
-          ITER_FAIL=$(grep "iterations" clean_output.txt | awk '{print $NF}')
-          REQ=$(grep "requests" clean_output.txt | awk '{print $(NF-1)}')
-          REQ_FAIL=$(grep "requests" clean_output.txt | awk '{print $NF}')
-          TS=$(grep "test-scripts" clean_output.txt | awk '{print $(NF-1)}')
-          TS_FAIL=$(grep "test-scripts" clean_output.txt | awk '{print $NF}')
-          PRE=$(grep "prerequest-scripts" clean_output.txt | awk '{print $(NF-1)}')
-          PRE_FAIL=$(grep "prerequest-scripts" clean_output.txt | awk '{print $NF}')
-          ASSERT=$(grep "assertions" clean_output.txt | awk '{print $(NF-1)}')
-          ASSERT_FAIL=$(grep "assertions" clean_output.txt | awk '{print $NF}')
-
-          # Duration & response time
-          DURATION=$(grep "total run duration" clean_output.txt | sed 's/.*duration: //')
-          RESP_TIME=$(grep "average response time" clean_output.txt | sed 's/.*time: //')
-
-          # Build markdown table
-          echo "| Metric             | Executed | Failed |" > summary.md
-          echo "|--------------------|----------|--------|" >> summary.md
-          echo "| Iterations         | $ITER     | $ITER_FAIL |" >> summary.md
-          echo "| Requests           | $REQ     | $REQ_FAIL |" >> summary.md
-          echo "| Test Scripts       | $TS     | $TS_FAIL |" >> summary.md
-          echo "| Pre-req Scripts    | $PRE     | $PRE_FAIL |" >> summary.md
-          echo "| Assertions         | $ASSERT     | $ASSERT_FAIL |" >> summary.md
-          echo "" >> summary.md
-          echo "*Duration:* $DURATION" >> summary.md
-          echo "*Avg Response Time:* $RESP_TIME" >> summary.md
-
-          # Decide pass/fail
-          TOTAL_FAIL=$((ITER_FAIL + REQ_FAIL + TS_FAIL + PRE_FAIL + ASSERT_FAIL))
-          STATUS="✅ PASSED"
-          if [ "$TOTAL_FAIL" -gt 0 ]; then
-            STATUS="🚨 FAILED"
+          SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
+          if [ -z "$SUMMARY_URL" ]; then
+            SUMMARY_URL="Postman run summary URL not found"
           fi
+          echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          cat summary.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Notify Slack
+      - name: Notify Slack with results
+        if: always()
         run: |
-          STATUS="${{ steps.parse.outputs.status }}"
-          SUMMARY="${{ steps.parse.outputs.summary }}"
-
-          # Escape Markdown text safely
-          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs .)
+          if [ "${{ job.status }}" == "success" ]; then
+            STATUS_ICON="✅"
+            STATUS_MSG="Katsu Wallet API Tests Passed!"
+          else
+            STATUS_ICON="🚨"
+            STATUS_MSG="Katsu Wallet API Tests Failed!"
+          fi
 
           curl -X POST -H 'Content-type: application/json' \
           --data "{
-            \"text\": \"Katsu Wallet API Test Results\",
             \"blocks\": [
               {
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \":bell: *Katsu Wallet API Test Results*\\n${STATUS}\\n\`\`\`$(echo $SUMMARY_ESCAPED | sed 's/^\"//;s/\"$//')\`\`\`\"
+                  \"text\": \"${STATUS_ICON} *${STATUS_MSG}*\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
                 }
               }
             ]
