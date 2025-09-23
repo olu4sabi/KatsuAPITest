@@ -1,7 +1,9 @@
-on:
-  push: {}
+name: Katsu API Tests
+
+on: 
+  push:
   schedule:
-    - cron: '0 7 * * *'  # Runs daily at 7:00 AM UTC (8:00 AM WAT)
+    - cron: '0 7 * * *' # Daily 7:00 UTC (8:00 WAT)
 
 jobs:
   katsu-api-tests:
@@ -18,21 +20,51 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
-            > postman_output.txt || true
+          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" \
+            -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
+            --reporters cli > postman_output.txt || true
 
-      - name: Extract Postman run URL
-        id: extract_url
+      - name: Extract summary, status, and URL
+        id: extract
         run: |
+          # Extract summary table
+          SUMMARY=$(sed -n '/┌/,/┘/p' postman_output.txt)
+
+          # Extract run duration & response time
+          DURATION=$(grep "total run duration" postman_output.txt | sed 's/│//g;s/total run duration://g;s/^ *//;s/ *$//')
+          RESP_TIME=$(grep "average response time" postman_output.txt | sed 's/│//g;s/average response time://g;s/^ *//;s/ *$//')
+
+          # Count failures
+          FAIL_COUNT=$(echo "$SUMMARY" | awk -F'│' '{gsub(/ /,""); if($3 ~ /^[0-9]+$/) sum+=$3} END{print sum}')
+
+          STATUS="✅ *PASSED*"
+          if [ "$FAIL_COUNT" -gt 0 ]; then
+            STATUS="🚨 *FAILED*"
+          fi
+
+          # Extract Postman run summary URL
           SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
             SUMMARY_URL="Postman run summary URL not found"
           fi
-          echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-      - name: Notify Slack on Failure
-        if: failure()
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "summary_url=$SUMMARY_URL" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" > summary.txt
+          echo "$DURATION" > duration.txt
+          echo "$RESP_TIME" > response.txt
+
+      - name: Notify Slack
         run: |
+          STATUS="${{ steps.extract.outputs.status }}"
+          SUMMARY=$(cat summary.txt)
+          DURATION=$(cat duration.txt)
+          RESP_TIME=$(cat response.txt)
+          SUMMARY_URL="${{ steps.extract.outputs.summary_url }}"
+
+          # Escape summary safely
+          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs .)
+
           curl -X POST -H 'Content-type: application/json' \
           --data "{
             \"blocks\": [
@@ -40,23 +72,7 @@ jobs:
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \"🚨 *Katsu Wallet API Tests Failed!*\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
-                }
-              }
-            ]
-          }" ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      - name: Notify Slack on Success
-        if: success()
-        run: |
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{
-            \"blocks\": [
-              {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"✅ *Katsu Wallet API Tests Passed!*\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
+                  \"text\": \":bell: *Katsu Wallet API Test Results*\\n${STATUS}\\n\`\`\`$(echo $SUMMARY_ESCAPED | sed 's/^\"//;s/\"$//')\`\`\`\\n*Duration:* ${DURATION}\\n*Avg Response Time:* ${RESP_TIME}\\n<${SUMMARY_URL}|View Test Summary>\"
                 }
               }
             ]
