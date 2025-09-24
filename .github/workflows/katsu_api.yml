@@ -17,23 +17,31 @@ jobs:
         run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
 
       - name: Run Katsu Wallet API tests
+        id: run_tests
         run: |
-          # Run Postman and capture both stdout + stderr, but don't stop on failure
-          set -o pipefail
-          OUTPUT=$(postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" 2>&1 || true)
-          
+          # Run Postman and capture both stdout + stderr
+          set +e
+          OUTPUT=$(postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" 2>&1)
+          EXIT_CODE=$?
+          set -e
+
           # Always print the full output for debugging
           echo "$OUTPUT"
+
           # Extract run summary URL if present
           SUMMARY_URL=$(echo "$OUTPUT" | grep -o 'https://go.postman.co/workspace[^ ]*' | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
             SUMMARY_URL="(Summary URL not found)"
           fi
+
+          # Export values for later steps
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_ENV
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
+
       - name: Send Slack Notification
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${{ env.exit_code }}" -eq 0 ]; then
             STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
           else
             STATUS=":x: Katsu Wallet API Tests Failed!"
@@ -41,6 +49,10 @@ jobs:
 
           curl -X POST -H 'Content-type: application/json' \
             --data "{
-              \"text\": \"${STATUS}\n<${SUMMARY_URL}|View Test Summary on Postman>\"
+              \"text\": \"${STATUS}\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
             }" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Fail Job if Tests Failed
+        if: env.exit_code != '0'
+        run: exit 1
