@@ -18,22 +18,17 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" \
-            -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
-            > postman_output.txt || true
-
-      - name: Extract Postman run summary URL
-        id: extract_url
-        run: |
-          SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
+          OUTPUT=$(postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f")
+          echo "$OUTPUT"
+          SUMMARY_URL=$(echo "$OUTPUT" | grep -o 'https://go.postman.co/workspace[^ ]*' | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
             SUMMARY_URL="(Summary URL not found)"
           fi
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
-
       - name: Send Slack Notification
+        if: always()
         run: |
-          if [ "${{ steps.run_postman.outcome }}" = "success" ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
           else
             STATUS=":x: Katsu Wallet API Tests Failed!"
