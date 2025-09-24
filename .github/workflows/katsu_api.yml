@@ -18,46 +18,36 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          postman collection run "46224899-4d820c38-e038-4dd1-b097-33efdeeade90" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" \
-            > postman_output.txt || true
+          # Run Postman and capture both stdout + stderr
+          set +e
+          OUTPUT=$(postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" 2>&1)
+          EXIT_CODE=$?
+          set -e
 
-      - name: Extract Postman run URL
-        id: extract_url
-        run: |
-          SUMMARY_URL=$(grep -o 'https://go.postman.co/workspace[^ ]*' postman_output.txt | head -n 1)
+          # Print output for logs
+          echo "$OUTPUT"
+
+          # Extract run summary URL if present
+          SUMMARY_URL=$(echo "$OUTPUT" | grep -o 'https://go.postman.co/workspace[^ ]*' | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
-            SUMMARY_URL="Postman run summary URL not found"
+            SUMMARY_URL="(Summary URL not found)"
           fi
+
+          # Export values
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_ENV
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-      - name: Notify Slack on Failure
-        if: failure()
+      - name: Send Slack Notification
+        if: always()
         run: |
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{
-            \"blocks\": [
-              {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"🚨 *Katsu Wallet API Tests Failed!*\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
-                }
-              }
-            ]
-          }" ${{ secrets.SLACK_WEBHOOK_URL }}
+          if [ "${{ env.exit_code }}" -eq 0 ]; then
+            STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
+          else
+            STATUS=":x: Katsu Wallet API Tests Failed!"
+          fi
 
-      - name: Notify Slack on Success
-        if: success()
-        run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{
-            \"blocks\": [
-              {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"✅ *Katsu Wallet API Tests Passed!*\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
-                }
-              }
-            ]
-          }" ${{ secrets.SLACK_WEBHOOK_URL }}
+            --data "{
+              \"text\": \"${STATUS}\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
+            }" \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
