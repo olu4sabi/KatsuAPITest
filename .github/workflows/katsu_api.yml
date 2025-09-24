@@ -36,6 +36,6 @@ jobs:
 
           curl -X POST -H 'Content-type: application/json' \
             --data "{
-              \"text\": \"${STATUS}\nView Test Summary on Postman: ${{ env.SUMMARY_URL }}\"\n<'"$SUMMARY_URL"'|View Test Summary on Postman>
+              \"text\": \"${STATUS}\nView Test Summary on Postman: ${{ env.SUMMARY_URL }}\n<${SUMMARY_URL}|View Test Summary on Postman>\"
             }" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
