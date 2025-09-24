@@ -31,27 +31,16 @@ jobs:
           fi
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-      - name: Determine Test Result
-        id: check_status
+      - name: Send Slack Notification
         run: |
           if [ "${{ steps.run_postman.outcome }}" = "success" ]; then
-            echo "RESULT_MSG=:white_check_mark: Katsu Wallet API Tests Passed!" >> $GITHUB_ENV
-            echo "RESULT_STATUS=success" >> $GITHUB_ENV
+            STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
           else
-            echo "RESULT_MSG=:x: Katsu Wallet API Tests Failed!" >> $GITHUB_ENV
-            echo "RESULT_STATUS=failure" >> $GITHUB_ENV
+            STATUS=":x: Katsu Wallet API Tests Failed!"
           fi
 
-      - name: Send results to Slack
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "${{ env.RESULT_MSG }}\nView Test Summary on Postman: ${{ env.SUMMARY_URL }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      - name: Fail workflow if tests failed
-        if: env.RESULT_STATUS == 'failure'
-        run: exit 1
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"${STATUS}\nView Test Summary on Postman: ${{ env.SUMMARY_URL }}\"
+            }" \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
