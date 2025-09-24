@@ -20,7 +20,7 @@ jobs:
         run: |
           # Run Postman and capture both stdout + stderr
           set +e
-          OUTPUT=$(postman collection run "46224899-5d486da3-711e-4a2c-af97-b3ecaa0b23b8" -e "34441668-61ac56f0-4118-4b84-9cf1-c99e6e61816f" 2>&1)
+          OUTPUT=$(postman collection run "${{ secrets.COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
           EXIT_CODE=$?
           set -e
 
