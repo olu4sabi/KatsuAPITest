@@ -31,22 +31,24 @@ jobs:
           fi
           echo "exit_code=$EXIT_CODE" >> $GITHUB_ENV
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
+          
       - name: Extract summary (strip ANSI colors)
-          id: extract
-          run: |
-            # Remove ANSI color codes
-            sed 's/\x1b\[[0-9;]*m//g' postman_output.txt > clean_output.txt
+        id: extract
+        run: |
+          # Remove ANSI color codes
+          sed 's/\x1b\[[0-9;]*m//g' postman_output.txt > clean_output.txt
 
-            # Extract only the block between the first ┌ and the last ┘
-            SUMMARY=$(awk '/┌/{flag=1} flag; /┘/{exit}' clean_output.txt)
+          # Extract only the block between the first ┌ and the last ┘
+          SUMMARY=$(awk '/┌/{flag=1} flag; /┘/{exit}' clean_output.txt)
 
-            # Save clean summary
-            echo "$SUMMARY" > summary.txt
+          # Save clean summary
+          echo "$SUMMARY" > summary.txt
 
-            # Expose as output for Slack step
-            echo "summary<<EOF" >> $GITHUB_OUTPUT
-            cat summary.txt >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+          # Expose as output for Slack step
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          cat summary.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
       - name: Notify Slack with Summary
         run: |
           SUMMARY="${{ steps.extract.outputs.summary }}"
