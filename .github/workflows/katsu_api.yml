@@ -1,3 +1,5 @@
+name: Katsu API Tests
+
 on:
   push: {}
   schedule:
@@ -18,28 +20,37 @@ jobs:
 
       - name: Run Katsu Wallet API tests
         run: |
-          # Run Postman and capture both stdout + stderr
           set +e
           OUTPUT=$(postman collection run "${{ secrets.COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
           EXIT_CODE=$?
           set -e
 
-          # Print output for logs
           echo "$OUTPUT"
+          echo "$OUTPUT" > postman_output.txt
 
-          # Extract run summary URL if present
           SUMMARY_URL=$(echo "$OUTPUT" | grep -o 'https://go.postman.co/workspace[^ ]*' | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
             SUMMARY_URL="(Summary URL not found)"
           fi
 
-          # Export values
           echo "exit_code=$EXIT_CODE" >> $GITHUB_ENV
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
 
-      - name: Send Slack Notification
-        if: always()
+      - name: Extract summary (strip ANSI colors)
+        id: extract
         run: |
+          sed 's/\x1b\[[0-9;]*m//g' postman_output.txt > clean_output.txt
+          SUMMARY=$(sed -n '/┌/,/┘/p' clean_output.txt || true)
+          echo "$SUMMARY" > summary.txt
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          cat summary.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Notify Slack with Summary
+        run: |
+          SUMMARY="${{ steps.extract.outputs.summary }}"
+          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs .)
+
           if [ "${{ env.exit_code }}" -eq 0 ]; then
             STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
           else
@@ -47,7 +58,15 @@ jobs:
           fi
 
           curl -X POST -H 'Content-type: application/json' \
-            --data "{
-              \"text\": \"${STATUS}\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\"
-            }" \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+          --data "{
+            \"text\": \"Katsu Wallet API Test Results\",
+            \"blocks\": [
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"${STATUS}\\n<${{ env.SUMMARY_URL }}|View Test Summary on Postman>\\n\\n\`\`\`$(echo $SUMMARY_ESCAPED | sed 's/^\"//;s/\"$//')\`\`\`\"
+                }
+              }
+            ]
+          }" ${{ secrets.SLACK_WEBHOOK_URL }}
