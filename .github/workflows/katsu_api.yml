@@ -20,7 +20,7 @@ jobs:
       - name: Run Katsu Wallet API tests
         run: |
           set +e
-          OUTPUT=$(postman collection run "${{ secrets.COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
+          OUTPUT=$(postman collection run "${{ secrets.TEST_COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
           EXIT_CODE=$?
           set -e
           echo "$OUTPUT"
