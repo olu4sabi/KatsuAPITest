@@ -14,28 +14,23 @@ jobs:
       - name: Install Postman CLI
         run: |
           curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
-
       - name: Login to Postman CLI
         run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
 
       - name: Run Katsu Wallet API tests
         run: |
           set +e
-          OUTPUT=$(postman collection run "${{ secrets.TEST_COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
+          OUTPUT=$(postman collection run "${{ secrets.COLLECTION_ID }}" -e "${{ secrets.ENVIRONMENT_ID }}" 2>&1)
           EXIT_CODE=$?
           set -e
-
           echo "$OUTPUT"
           echo "$OUTPUT" > postman_output.txt
-
           SUMMARY_URL=$(echo "$OUTPUT" | grep -o 'https://go.postman.co/workspace[^ ]*' | head -n 1)
           if [ -z "$SUMMARY_URL" ]; then
             SUMMARY_URL="(Summary URL not found)"
           fi
-
           echo "exit_code=$EXIT_CODE" >> $GITHUB_ENV
           echo "SUMMARY_URL=$SUMMARY_URL" >> $GITHUB_ENV
-
       - name: Extract summary (strip ANSI colors)
         id: extract
         run: |
@@ -45,18 +40,15 @@ jobs:
           echo "summary<<EOF" >> $GITHUB_OUTPUT
           cat summary.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Notify Slack with Summary
         run: |
           SUMMARY="${{ steps.extract.outputs.summary }}"
           SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs .)
-
           if [ "${{ env.exit_code }}" -eq 0 ]; then
             STATUS=":white_check_mark: Katsu Wallet API Tests Passed!"
           else
             STATUS=":x: Katsu Wallet API Tests Failed!"
           fi
-
           curl -X POST -H 'Content-type: application/json' \
           --data "{
             \"text\": \"Katsu Wallet API Test Results\",
@@ -69,4 +61,4 @@ jobs:
                 }
               }
             ]
-          }" ${{ secrets.SLACK_WEBHOOK_TEST_URL }}
+          }" ${{ secrets.SLACK_WEBHOOK_URL }}
