@@ -3,7 +3,7 @@ name: Katsu API Tests
 on:
   push: {}
   schedule:
-    - cron: '0 7 * * *'  # Runs daily at 7:00 AM UTC (8:00 AM WAT)
+    - cron: '0 7 * * *'  # Runs daily at 7:00 AM UTC (8:00 AM WAT)  
 
 jobs:
   katsu-api-tests:
